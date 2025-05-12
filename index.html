@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Мини‑редактор 3D‑моделей (ES‑модули + import map)</title>
+    <style>
+        body,html{margin:0;height:100%;overflow:hidden;background:#202020;}
+        #ui{
+            position:absolute;top:10px;left:10px;
+            background:rgba(255,255,255,.8);padding:8px 12px;border-radius:6px;
+            font:14px/1.4 sans-serif;user-select:none;
+        }
+        #ui button{margin:4px 0;padding:4px 10px;cursor:pointer;}
+    </style>
+
+    <!-- Import‑map объявляет, где искать модуль "three".
+         Любой файл, который внутри себя пишет `import ... from "three"`,
+         будет резолвиться именно в этот URL. -->
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js"
+      }
+    }
+    </script>
+</head>
+<body>
+<div id="ui">
+    <button id="addBtn">Добавить куб</button><br>
+    <button id="exportBtn">Экспортировать OBJ</button>
+    <div style="margin-top:6px;font-size:12px;">
+        Перемещение выбранного куба:<br>
+        ↑ ↓ ← →, PgUp, PgDn  |  Смена куба: пробел
+    </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OBJExporter } from 'https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/exporters/OBJExporter.js';
+
+/* ---------- базовая сцена ---------- */
+const scene    = new THREE.Scene();
+const camera   = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+camera.position.set(3,4,8);
+camera.lookAt(0,0,0);
+
+/* свет, чтобы лучше видеть материал MeshNormalMaterial */
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(5,10,7);
+scene.add(light);
+
+/* ---------- кубы ---------- */
+const cubes = [];
+let   sel   = -1;
+
+function addCube(){
+    const geo  = new THREE.BoxGeometry();
+    const mat  = new THREE.MeshNormalMaterial();
+    const cube = new THREE.Mesh(geo, mat);
+    cube.position.y = 0.5;
+    scene.add(cube);
+    cubes.push(cube);
+    sel = cubes.length - 1;
+}
+addCube();                                  // стартовый куб
+
+/* ---------- экспорт OBJ ---------- */
+function exportOBJ(){
+    if(!cubes.length){ alert('Сцена пуста'); return; }
+    const exporter = new OBJExporter();
+    const data     = exporter.parse(scene);
+    const blob     = new Blob([data], {type:'text/plain'});
+    const url      = URL.createObjectURL(blob);
+    const a        = document.createElement('a');
+    a.href = url;
+    a.download = 'model.obj';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+/* ---------- управление ---------- */
+window.addEventListener('keydown', e=>{
+    if(sel<0) return;
+    const c = cubes[sel];
+    switch(e.code){
+        case 'ArrowUp'  : c.position.z -= 0.3; break;
+        case 'ArrowDown': c.position.z += 0.3; break;
+        case 'ArrowLeft': c.position.x -= 0.3; break;
+        case 'ArrowRight':c.position.x += 0.3; break;
+        case 'PageUp'   : c.position.y += 0.3; break;
+        case 'PageDown' : c.position.y -= 0.3; break;
+        case 'Space'    : sel = (sel+1) % cubes.length; break;
+    }
+});
+
+/* ---------- resize ---------- */
+window.addEventListener('resize', ()=>{
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ---------- UI ---------- */
+document.getElementById('addBtn').addEventListener('click', addCube);
+document.getElementById('exportBtn').addEventListener('click', exportOBJ);
+
+/* ---------- render‑loop ---------- */
+(function loop(){
+    requestAnimationFrame(loop);
+    renderer.render(scene, camera);
+})();
+</script>
+</body>
+</html>
