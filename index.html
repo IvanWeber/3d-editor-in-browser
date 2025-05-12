@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Мини‑редактор 3D‑моделей (камера — зум + вращение)</title>
+    <title>Мини‑редактор 3D‑моделей — шаг 0.2 (1/5 куба)</title>
     <style>
         body,html{margin:0;height:100%;overflow:hidden;background:#202020;}
         #ui{
@@ -13,7 +13,7 @@
         #ui button{margin:4px 0;padding:4px 10px;cursor:pointer;}
     </style>
 
-    <!-- import map указывает браузеру, где брать модуль «three» -->
+    <!-- import‑map: где брать модуль «three» -->
     <script type="importmap">
     {
       "imports": {
@@ -24,13 +24,13 @@
 </head>
 <body>
 <div id="ui">
-    <button id="addBtn">Добавить куб</button><br>
+    <button id="addBtn">Добавить куб (N)</button><br>
     <button id="exportBtn">Экспортировать OBJ</button>
     <div style="margin-top:6px;font-size:12px;">
-        Перемещение выбранного куба:<br>
-        ↑ ↓ ← →, PgUp, PgDn  |  Смена куба: пробел<br>
-        Вращение камеры — зажать ЛКМ и водить мышью;<br>
-        Зум — колесо мыши.
+        Перемещение: ↑ ↓ ← →, PgUp/PgDn (шаг 0.2)<br>
+        Добавить куб — <b>N</b> | Смена выделения — пробел<br>
+        Удалить куб — Del/Backspace<br>
+        Камера: ЛКМ — вращение | колёсико — зум
     </div>
 </div>
 
@@ -39,91 +39,112 @@ import * as THREE from 'three';
 import { OBJExporter } from 'https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/exporters/OBJExporter.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/controls/OrbitControls.js';
 
-/* ---------- базовая сцена ---------- */
+/* ---------- константы ---------- */
+const STEP = 0.2;                 // 1/5 куба
+
+/* ---------- сцена ---------- */
 const scene    = new THREE.Scene();
 const camera   = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
 
-camera.position.set(3,4,8);
+camera.position.set(4,5,9);
 camera.lookAt(0,0,0);
 
-/* ---------- управление камерой (OrbitControls) ---------- */
+/* ---------- OrbitControls ---------- */
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping   = true;   // плавность
-controls.dampingFactor   = 0.05;
-controls.minDistance     = 2;      // минимальный зум
-controls.maxDistance     = 30;     // максимальный зум
-controls.enableKeys      = false;  // чтобы стрелки остались для кубов
+Object.assign(controls,{
+    enableDamping:true,dampingFactor:0.05,
+    minDistance:2,maxDistance:30,
+    enableKeys:false
+});
 controls.target.set(0,0.5,0);
 controls.update();
 
 /* ---------- свет ---------- */
-const light = new THREE.DirectionalLight(0xffffff, 1);
-light.position.set(5,10,7);
-scene.add(light);
+scene.add(new THREE.DirectionalLight(0xffffff,1).position.set(5,10,7));
 
-/* ---------- кубы ---------- */
+/* ---------- материалы ---------- */
+const defaultMaterial   = new THREE.MeshNormalMaterial();
+const highlightMaterial = new THREE.MeshBasicMaterial({color:0xffcc00});
+
+/* ---------- кубы и выделение ---------- */
 const cubes = [];
 let   sel   = -1;
 
+const snap=v=>Math.round(v/STEP)*STEP;
+
+function setSelection(i){
+    if(sel===i) return;
+    if(sel>=0&&cubes[sel]) cubes[sel].material=defaultMaterial;
+    sel=i;
+    if(sel>=0&&cubes[sel]) cubes[sel].material=highlightMaterial;
+}
+
 function addCube(){
-    const geo  = new THREE.BoxGeometry();
-    const mat  = new THREE.MeshNormalMaterial();
-    const cube = new THREE.Mesh(geo, mat);
-    cube.position.y = 0.5;
+    const cube=new THREE.Mesh(new THREE.BoxGeometry(),defaultMaterial);
+    cube.position.set(snap(0),0.5,snap(0));
     scene.add(cube);
     cubes.push(cube);
-    sel = cubes.length - 1;
+    setSelection(cubes.length-1);
 }
-addCube();                                  // стартовый куб
+addCube(); // стартовый
+
+function removeSelectedCube(){
+    if(sel<0) return;
+    const c=cubes[sel];
+    scene.remove(c);
+    c.geometry.dispose();c.material.dispose();
+    cubes.splice(sel,1);
+    setSelection(cubes.length?sel%cubes.length:-1);
+}
 
 /* ---------- экспорт OBJ ---------- */
 function exportOBJ(){
-    if(!cubes.length){ alert('Сцена пуста'); return; }
-    const exporter = new OBJExporter();
-    const data     = exporter.parse(scene);
-    const blob     = new Blob([data], {type:'text/plain'});
-    const url      = URL.createObjectURL(blob);
-    const a        = document.createElement('a');
-    a.href = url;
-    a.download = 'model.obj';
-    a.click();
+    if(!cubes.length){alert('Сцена пуста');return;}
+    const blob=new Blob([new OBJExporter().parse(scene)],{type:'text/plain'});
+    const url=URL.createObjectURL(blob);
+    Object.assign(document.createElement('a'),{href:url,download:'model.obj'}).click();
     URL.revokeObjectURL(url);
 }
 
-/* ---------- управление кубами ---------- */
-window.addEventListener('keydown', e=>{
+/* ---------- клавиатура ---------- */
+window.addEventListener('keydown',e=>{
+    if(['Delete','Backspace'].includes(e.key)){removeSelectedCube();return;}
+    if(e.code==='KeyN'){addCube();return;}       // N — создать новый
     if(sel<0) return;
-    const c = cubes[sel];
+    const c=cubes[sel];
     switch(e.code){
-        case 'ArrowUp'  : c.position.z -= 0.3; break;
-        case 'ArrowDown': c.position.z += 0.3; break;
-        case 'ArrowLeft': c.position.x -= 0.3; break;
-        case 'ArrowRight':c.position.x += 0.3; break;
-        case 'PageUp'   : c.position.y += 0.3; break;
-        case 'PageDown' : c.position.y -= 0.3; break;
-        case 'Space'    : sel = (sel+1) % cubes.length; break;
+        case 'ArrowUp'  : c.position.z-=STEP;break;
+        case 'ArrowDown': c.position.z+=STEP;break;
+        case 'ArrowLeft': c.position.x-=STEP;break;
+        case 'ArrowRight':c.position.x+=STEP;break;
+        case 'PageUp'   : c.position.y+=STEP;break;
+        case 'PageDown' : c.position.y=Math.max(STEP/2,c.position.y-STEP);break;
+        case 'Space'    : setSelection((sel+1)%cubes.length);break;
     }
+    c.position.x=snap(c.position.x);
+    c.position.y=snap(c.position.y-0.5)+0.5;
+    c.position.z=snap(c.position.z);
 });
 
 /* ---------- resize ---------- */
-window.addEventListener('resize', ()=>{
-    camera.aspect = innerWidth/innerHeight;
+addEventListener('resize',()=>{
+    camera.aspect=innerWidth/innerHeight;
     camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
+    renderer.setSize(innerWidth,innerHeight);
 });
 
 /* ---------- UI ---------- */
-document.getElementById('addBtn').addEventListener('click', addCube);
-document.getElementById('exportBtn').addEventListener('click', exportOBJ);
+addBtn  .addEventListener('click',addCube);
+exportBtn.addEventListener('click',exportOBJ);
 
 /* ---------- render‑loop ---------- */
 (function loop(){
     requestAnimationFrame(loop);
-    controls.update();          // OrbitControls damping
-    renderer.render(scene, camera);
+    controls.update();
+    renderer.render(scene,camera);
 })();
 </script>
 </body>
